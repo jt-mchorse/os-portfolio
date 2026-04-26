@@ -19,7 +19,7 @@ export default function ProjectDetailApp({ meta }: { windowId: string; meta?: Re
   return (
     <div className="h-full overflow-y-auto text-white macos-scrollbar" style={{ background: '#1a1a1a' }}>
       {/* Hero — live screenshot + brand overlay */}
-      <div className="relative w-full" style={{ height: 280 }}>
+      <div className="relative w-full overflow-hidden" style={{ height: 280 }}>
         <ProjectScreenshot project={project} className="absolute inset-0" />
         <div
           className="absolute inset-0 pointer-events-none"
