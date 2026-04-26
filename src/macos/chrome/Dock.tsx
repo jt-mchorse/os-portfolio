@@ -2,46 +2,63 @@
 
 import { useState, useRef } from 'react'
 import { useWindowStore, type AppId } from '@/store/windowStore'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { play, sounds } from '@/lib/sounds'
+import { APP_REGISTRY, centerForApp, type AppDefinition } from '@/macos/appRegistry'
 
-interface DockItem {
-  id: AppId
-  label: string
-  emoji: string
-  defaultSize: { width: number; height: number }
-}
-
-const DOCK_ITEMS: DockItem[] = [
-  { id: 'finder', label: 'Finder', emoji: '🗂', defaultSize: { width: 760, height: 520 } },
-  { id: 'projects', label: 'Projects', emoji: '📁', defaultSize: { width: 760, height: 520 } },
-  { id: 'skills', label: 'Skills', emoji: '🛠', defaultSize: { width: 680, height: 560 } },
-  { id: 'resume', label: 'Resume', emoji: '📄', defaultSize: { width: 720, height: 900 } },
-  { id: 'contact', label: 'Contact', emoji: '✉️', defaultSize: { width: 540, height: 480 } },
-  { id: 'assistant', label: 'Assistant', emoji: '🤖', defaultSize: { width: 560, height: 500 } },
-  { id: 'switch-os', label: 'Switch OS', emoji: '🔄', defaultSize: { width: 400, height: 280 } },
+// Dock shows a curated subset of apps, in order
+const DOCK_APP_IDS: AppId[] = [
+  'finder',
+  'projects',
+  'skills',
+  'resume',
+  'contact',
+  'assistant',
+  'switch-os',
 ]
+
+const DOCK_ITEMS: AppDefinition[] = DOCK_APP_IDS
+  .map((id) => APP_REGISTRY.find((a) => a.id === id)!)
+  .filter(Boolean)
 
 export default function Dock() {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+  const [bouncingId, setBouncingId] = useState<string | null>(null)
   const { openWindow, windows, restoreWindow, getWindowByApp } = useWindowStore()
   const dockRef = useRef<HTMLDivElement>(null)
 
-  const handleClick = (item: DockItem) => {
+  const handleClick = (item: AppDefinition) => {
     play(sounds.click)
     const existing = getWindowByApp(item.id)
     if (existing?.isMinimized) {
       restoreWindow(existing.id)
       return
     }
-    if (existing) return // already open and focused
-
+    if (existing) {
+      // Focus the existing window via re-open call (focus is handled in store)
+      const pos = centerForApp(item)
+      openWindow({
+        id: existing.id,
+        appId: item.id,
+        title: item.label,
+        x: existing.x,
+        y: existing.y,
+        width: existing.width,
+        height: existing.height,
+        isMinimized: false,
+      })
+      return
+    }
+    // Bounce + launch
+    setBouncingId(item.id)
+    setTimeout(() => setBouncingId(null), 700)
+    const pos = centerForApp(item)
     openWindow({
       id: `${item.id}-${Date.now()}`,
       appId: item.id,
       title: item.label,
-      x: Math.round(globalThis.window?.innerWidth / 2 - item.defaultSize.width / 2) || 100,
-      y: Math.round(globalThis.window?.innerHeight / 2 - item.defaultSize.height / 2) || 60,
+      x: pos.x,
+      y: pos.y,
       ...item.defaultSize,
       isMinimized: false,
     })
@@ -72,6 +89,7 @@ export default function Dock() {
         {DOCK_ITEMS.map((item, idx) => {
           const isRunning = windows.some((w) => w.appId === item.id)
           const scale = getScale(idx)
+          const isBouncing = bouncingId === item.id
 
           return (
             <div
@@ -81,29 +99,49 @@ export default function Dock() {
               onMouseLeave={() => setHoveredIdx(null)}
             >
               {/* Tooltip */}
-              {hoveredIdx === idx && (
-                <motion.div
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.12 }}
-                  className="absolute -top-8 whitespace-nowrap text-xs text-white/90 px-2 py-0.5 rounded-md pointer-events-none"
-                  style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
-                >
-                  {item.label}
-                </motion.div>
-              )}
+              <AnimatePresence>
+                {hoveredIdx === idx && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute -top-9 whitespace-nowrap text-[11px] text-white px-2.5 py-1 rounded-md pointer-events-none font-medium"
+                    style={{
+                      background: 'rgba(20,20,20,0.92)',
+                      backdropFilter: 'blur(8px)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                    }}
+                  >
+                    {item.label}
+                    {/* tail */}
+                    <div
+                      className="absolute left-1/2 -bottom-1 -translate-x-1/2 w-2 h-2 rotate-45"
+                      style={{ background: 'rgba(20,20,20,0.92)' }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Icon */}
               <motion.button
-                animate={{ scale }}
-                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                animate={
+                  isBouncing
+                    ? { scale, y: [0, -32, 0, -16, 0] }
+                    : { scale, y: 0 }
+                }
+                transition={
+                  isBouncing
+                    ? { duration: 0.7, ease: 'easeOut' }
+                    : { type: 'spring', stiffness: 400, damping: 25 }
+                }
                 onClick={() => handleClick(item)}
-                className="w-12 h-12 rounded-xl flex items-center justify-center text-3xl transition-all origin-bottom"
+                className="w-12 h-12 rounded-xl flex items-center justify-center text-3xl transition-colors origin-bottom"
                 style={{
                   background: isRunning ? 'rgba(255,255,255,0.18)' : 'transparent',
                 }}
               >
-                {item.emoji}
+                {item.emoji || '🍎'}
               </motion.button>
 
               {/* Running dot */}
