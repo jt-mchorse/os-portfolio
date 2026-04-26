@@ -18,13 +18,22 @@ export const metadata: Metadata = {
     title: 'James McHorse — OS Portfolio',
     description: 'An interactive OS-style portfolio — pick macOS or Arch Linux.',
     url: 'https://os.leftcoaststack.com',
-    siteName: 'James McHorse Portfolio',
+    siteName: 'Left Coast Stack — James McHorse',
     type: 'website',
+    images: [
+      {
+        url: '/icon-512.png',
+        width: 512,
+        height: 512,
+        alt: 'Left Coast Stack',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'James McHorse — OS Portfolio',
     description: 'An interactive OS-style portfolio — pick macOS or Arch Linux.',
+    images: ['/icon-512.png'],
   },
   robots: {
     index: true,
@@ -37,8 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${jetBrainsMono.variable} h-full`}>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#000000" />
-        <link rel="icon" href="/favicon.ico" />
+        <meta name="theme-color" content="#1a294c" />
       </head>
       <body className="h-full overflow-hidden bg-black">{children}</body>
     </html>
