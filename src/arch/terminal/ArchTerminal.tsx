@@ -3,8 +3,8 @@
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useCallback } from 'react'
 import { useOSStore } from '@/store/osStore'
-import { dispatch, type TermLine } from '@/arch/commands'
-import { cwdToString } from '@/arch/fs/filesystem'
+import { dispatch, tabComplete, type TermLine } from '@/arch/commands'
+import { cwdToString, HOME } from '@/arch/fs/filesystem'
 import { about } from '@/content/about'
 import { play, sounds } from '@/lib/sounds'
 
@@ -17,6 +17,7 @@ const MOTD = `
 
 \x1b[38;2;156;163;175mWelcome, \x1b[38;2;23;195;178m${about.name}\x1b[38;2;156;163;175m.\x1b[0m
 \x1b[38;2;156;163;175mRun \x1b[38;2;234;179;8mos --help\x1b[38;2;156;163;175m to see available commands.\x1b[0m
+\x1b[38;2;156;163;175mPipes (\x1b[38;2;234;179;8m|\x1b[38;2;156;163;175m), \x1b[38;2;234;179;8mTab\x1b[38;2;156;163;175m completion, and \x1b[38;2;234;179;8m↑↓\x1b[38;2;156;163;175m history are all supported.\x1b[0m
 `.trim()
 
 const PROMPT_USER = '\x1b[38;2;23;195;178mjmchorse\x1b[0m'
@@ -53,7 +54,8 @@ export default function ArchTerminal({ onOpenPDF }: ArchTerminalProps) {
   const inputRef = useRef('')
   const historyRef = useRef<string[]>([])
   const historyIdxRef = useRef(-1)
-  const cwdRef = useRef<string[]>([])
+  // cwd is absolute (e.g. ['home','jmchorse'] = HOME)
+  const cwdRef = useRef<string[]>([...HOME])
   const setCwdState = useCallback((newCwd: string[]) => { cwdRef.current = newCwd }, [])
   const { triggerRestart } = useOSStore()
 
@@ -77,21 +79,19 @@ export default function ArchTerminal({ onOpenPDF }: ArchTerminalProps) {
 
     term.write('\r\n')
 
-    // Play error sound for unknown commands (detected by red output with 'command not found')
-    const isUnknownCmd = trimmed && !['os','projects','skills','resume','contact','links','chat','whoami','neofetch','date','uptime','clear','echo','reboot','help','ls','cd','cat','pwd','sudo','pacman','man','vim','nano','emacs','l','ls-la','sound'].includes(trimmed.split(/\s+/)[0])
-    if (isUnknownCmd) play(sounds.archError)
-
+    // Detect unknown command (red error from dispatch)
     const result = dispatch(trimmed, {
       args: trimmed.split(/\s+/).slice(1),
       cwd: cwdRef.current,
       setCwd: updateCwd,
-      openPDF: () => {
-        onOpenPDF?.()
-      },
-      triggerSwitch: () => {
-        setTimeout(() => triggerRestart(), 600)
-      },
+      openPDF: () => { onOpenPDF?.() },
+      triggerSwitch: () => { setTimeout(() => triggerRestart(), 600) },
+      history: historyRef.current,
     })
+
+    if (result.output.some((l) => l.text.includes('command not found'))) {
+      play(sounds.archError)
+    }
 
     if (result.clearScreen) {
       term.clear()
@@ -102,7 +102,7 @@ export default function ArchTerminal({ onOpenPDF }: ArchTerminalProps) {
     }
 
     writePrompt()
-  }, [updateCwd, triggerRestart, writePrompt])
+  }, [updateCwd, triggerRestart, writePrompt, onOpenPDF])
 
   useEffect(() => {
     if (!termRef.current) return
@@ -154,17 +154,14 @@ export default function ArchTerminal({ onOpenPDF }: ArchTerminalProps) {
       fitAddon.fit()
       xtermRef.current = term
 
-      // MOTD + initial prompt
       term.writeln(MOTD)
       term.write('\r\n')
       term.write(buildPrompt(cwdToString(cwdRef.current)))
 
-      // Auto-run the help command on first load
       setTimeout(() => {
         runCommand('os --help')
       }, 300)
 
-      // Handle keyboard input
       term.onKey(({ key, domEvent }) => {
         const ev = domEvent
         const printable = !ev.altKey && !ev.ctrlKey && !ev.metaKey
@@ -189,7 +186,6 @@ export default function ArchTerminal({ onOpenPDF }: ArchTerminalProps) {
           if (historyIdxRef.current > 0) {
             historyIdxRef.current--
             const cmd = history[historyIdxRef.current]
-            // Clear current input
             term.write('\b \b'.repeat(inputRef.current.length))
             inputRef.current = cmd
             term.write(cmd)
@@ -227,16 +223,32 @@ export default function ArchTerminal({ onOpenPDF }: ArchTerminalProps) {
         }
 
         if (ev.key === 'Tab') {
-          // Simple tab completion for commands
-          const partial = inputRef.current
-          const cmds = ['os', 'projects', 'skills', 'resume', 'contact', 'links', 'chat', 'whoami', 'neofetch', 'date', 'uptime', 'clear', 'ls', 'cd', 'cat', 'pwd', 'echo', 'reboot', 'help']
-          const matches = cmds.filter((c) => c.startsWith(partial))
-          if (matches.length === 1) {
-            const completion = matches[0].slice(partial.length)
-            inputRef.current = matches[0]
-            term.write(completion)
-          }
           ev.preventDefault()
+          const matches = tabComplete(inputRef.current, cwdRef.current)
+          if (matches.length === 1) {
+            // Replace last token in input with the match
+            const parts = inputRef.current.split(/(\s+)/)
+            const lastIdx = parts.length - 1
+            // Find last non-whitespace token
+            let tokenIdx = lastIdx
+            while (tokenIdx > 0 && /^\s+$/.test(parts[tokenIdx])) tokenIdx--
+            // For path completion preserve dir prefix
+            const slashIdx = parts[tokenIdx].lastIndexOf('/')
+            if (slashIdx >= 0) {
+              parts[tokenIdx] = matches[0]
+            } else {
+              parts[tokenIdx] = matches[0]
+            }
+            const newInput = parts.join('')
+            term.write('\b \b'.repeat(inputRef.current.length))
+            inputRef.current = newInput
+            term.write(newInput)
+          } else if (matches.length > 1) {
+            // Show options
+            term.write('\r\n')
+            term.writeln(matches.join('  '))
+            term.write(buildPrompt(cwdToString(cwdRef.current)) + inputRef.current)
+          }
           return
         }
 
@@ -246,7 +258,6 @@ export default function ArchTerminal({ onOpenPDF }: ArchTerminalProps) {
         }
       })
 
-      // Handle resize
       const resizeObserver = new ResizeObserver(() => fitAddon.fit())
       resizeObserver.observe(termRef.current!)
 
