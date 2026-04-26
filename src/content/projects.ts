@@ -21,13 +21,11 @@ export interface Project {
 }
 
 /**
- * Live screenshot via WordPress mShots — free, no API key required.
- * The first request triggers a render, subsequent loads return the image.
- * Use a wide preset suitable for the macOS Finder card layout.
+ * Static screenshot of the project's website, captured via Playwright in
+ * scripts/capture-screenshots.mjs and shipped under /public/project-screenshots.
  */
-export function projectScreenshotUrl(p: Project, w = 1280, h = 800): string {
-  const encoded = encodeURIComponent(p.liveUrl)
-  return `https://s.wordpress.com/mshots/v1/${encoded}?w=${w}&h=${h}`
+export function projectScreenshotUrl(p: Project): string {
+  return `/project-screenshots/${p.id}.png`
 }
 
 /**
