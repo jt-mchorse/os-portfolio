@@ -54,17 +54,35 @@ export default function MacWindow({ window: win, children }: MacWindowProps) {
     }, 280)
   }
 
-  // Edge snapping while dragging
-  const handleDrag = (_: unknown, d: { x: number; y: number }) => {
-    const w = globalThis.window?.innerWidth ?? 1280
-    const SNAP = 18
-    if (d.x <= SNAP) setSnapHint('left')
-    else if (d.x + win.width >= w - SNAP) setSnapHint('right')
-    else if (d.y <= SNAP + 4) setSnapHint('top')
-    else setSnapHint(null)
+  // Edge snapping — only triggered when mouse cursor is at the actual screen edge
+  // AND the user is holding the Option/Alt key. This prevents accidental snaps
+  // during normal dragging.
+  const isDraggingRef = useRef(false)
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return
+      // Only when Option/Alt held — opt-in snap
+      if (!e.altKey) {
+        if (snapHint) setSnapHint(null)
+        return
+      }
+      const w = globalThis.window?.innerWidth ?? 1280
+      const EDGE = 4 // cursor must be within 4px of the screen edge
+      if (e.clientX <= EDGE) setSnapHint('left')
+      else if (e.clientX >= w - EDGE) setSnapHint('right')
+      else if (e.clientY <= 28 + EDGE) setSnapHint('top') // 28 = menu bar height
+      else setSnapHint(null)
+    }
+    window.addEventListener('mousemove', onMove)
+    return () => window.removeEventListener('mousemove', onMove)
+  }, [snapHint])
+
+  const handleDragStart = () => {
+    isDraggingRef.current = true
   }
 
   const handleDragStop = (_: unknown, d: { x: number; y: number }) => {
+    isDraggingRef.current = false
     const w = globalThis.window?.innerWidth ?? 1280
     const h = globalThis.window?.innerHeight ?? 800
     if (snapHint === 'left') {
@@ -117,7 +135,7 @@ export default function MacWindow({ window: win, children }: MacWindowProps) {
         dragHandleClassName="window-drag-handle"
         bounds="parent"
         onMouseDown={() => focusWindow(win.id)}
-        onDrag={handleDrag}
+        onDragStart={handleDragStart}
         onDragStop={handleDragStop}
         onResizeStop={(_, __, ref, ___, pos) =>
           updateWindow(win.id, {
