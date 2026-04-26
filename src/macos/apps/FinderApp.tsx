@@ -4,10 +4,20 @@ import { useState } from 'react'
 import { projects, type Project } from '@/content/projects'
 import { experience } from '@/content/experience'
 import { useWindowStore } from '@/store/windowStore'
+import ProjectIcon from '@/macos/components/ProjectIcon'
 
 type SidebarSection = 'projects' | 'experience' | 'recent'
 
-export default function FinderApp({ windowId }: { windowId: string; meta?: Record<string, unknown> }) {
+// Map experience companies to a project (so we can reuse logos).
+function projectForCompany(company: string): Project | undefined {
+  const norm = company.toLowerCase()
+  return projects.find((p) =>
+    norm.includes(p.company.toLowerCase()) ||
+    p.company.toLowerCase().includes(norm.split('(')[0].trim())
+  )
+}
+
+export default function FinderApp({ windowId: _windowId }: { windowId: string; meta?: Record<string, unknown> }) {
   const [section, setSection] = useState<SidebarSection>('projects')
   const [selected, setSelected] = useState<string | null>(null)
   const [view, setView] = useState<'grid' | 'list'>('grid')
@@ -20,8 +30,8 @@ export default function FinderApp({ windowId }: { windowId: string; meta?: Recor
       title: project.title,
       x: Math.round(Math.random() * 160 + 120),
       y: Math.round(Math.random() * 80 + 60),
-      width: 780,
-      height: 600,
+      width: 820,
+      height: 640,
       isMinimized: false,
       meta: { projectId: project.id },
     })
@@ -90,17 +100,15 @@ export default function FinderApp({ windowId }: { windowId: string; meta?: Recor
                     key={p.id}
                     onClick={() => setSelected(p.id)}
                     onDoubleClick={() => openProject(p)}
-                    className="flex flex-col items-center gap-2 p-3 rounded-xl transition-all text-left"
+                    className="flex flex-col items-center gap-2 p-3 rounded-xl transition-all text-left group"
                     style={{
                       background: selected === p.id ? 'rgba(99,130,255,0.25)' : 'rgba(255,255,255,0.04)',
                       border: '1px solid rgba(255,255,255,0.07)',
                     }}
                   >
-                    <div className="w-14 h-14 rounded-xl overflow-hidden bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center text-2xl">
-                      📦
-                    </div>
-                    <span className="text-xs text-center text-white/80 leading-tight">{p.title}</span>
-                    <span className="text-[10px] text-white/35">{p.company}</span>
+                    <ProjectIcon project={p} size={56} rounded={14} />
+                    <span className="text-xs text-center text-white/85 leading-tight font-medium line-clamp-2">{p.title}</span>
+                    <span className="text-[10px] text-white/40">{p.company}</span>
                   </button>
                 ))}
               </div>
@@ -116,7 +124,7 @@ export default function FinderApp({ windowId }: { windowId: string; meta?: Recor
                       background: selected === p.id ? 'rgba(99,130,255,0.25)' : 'transparent',
                     }}
                   >
-                    <span className="text-xl">📦</span>
+                    <ProjectIcon project={p} size={32} rounded={8} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-white/90 truncate">{p.title}</p>
                       <p className="text-xs text-white/40 truncate">{p.company} · {p.period}</p>
@@ -129,26 +137,34 @@ export default function FinderApp({ windowId }: { windowId: string; meta?: Recor
 
           {section === 'experience' && (
             <div className="space-y-2">
-              {experience.map((exp) => (
-                <button
-                  key={exp.id}
-                  onClick={() => setSelected(exp.id)}
-                  className="w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all"
-                  style={{
-                    background: selected === exp.id ? 'rgba(99,130,255,0.22)' : 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.07)',
-                  }}
-                >
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center text-lg flex-shrink-0 mt-0.5">
-                    💼
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white/90">{exp.title}</p>
-                    <p className="text-xs text-blue-400">{exp.company}</p>
-                    <p className="text-xs text-white/40 mt-0.5">{exp.period}</p>
-                  </div>
-                </button>
-              ))}
+              {experience.map((exp) => {
+                const linked = projectForCompany(exp.company)
+                return (
+                  <button
+                    key={exp.id}
+                    onClick={() => setSelected(exp.id)}
+                    onDoubleClick={() => linked && openProject(linked)}
+                    className="w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all"
+                    style={{
+                      background: selected === exp.id ? 'rgba(99,130,255,0.22)' : 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.07)',
+                    }}
+                  >
+                    {linked ? (
+                      <ProjectIcon project={linked} size={40} rounded={10} />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center text-lg flex-shrink-0">
+                        💼
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white/90 truncate">{exp.title}</p>
+                      <p className="text-xs text-blue-400 truncate">{exp.company}</p>
+                      <p className="text-xs text-white/40 mt-0.5">{exp.period}</p>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
@@ -156,7 +172,7 @@ export default function FinderApp({ windowId }: { windowId: string; meta?: Recor
         {/* Status bar */}
         <div className="px-4 py-1.5 border-t border-white/10 flex-shrink-0" style={{ background: '#222' }}>
           <span className="text-[11px] text-white/35">
-            {section === 'projects' ? `${projects.length} items` : `${experience.length} positions`}
+            {section === 'projects' ? `${projects.length} items` : section === 'experience' ? `${experience.length} positions` : `${projects.length} items`}
             {selected ? ' · 1 selected' : ''}
           </span>
         </div>
