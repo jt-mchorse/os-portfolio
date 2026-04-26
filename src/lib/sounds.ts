@@ -236,3 +236,114 @@ export function play(soundFn: () => void): void {
     // Ignore — browser may block audio before user interaction
   }
 }
+
+// ─── Ambient background loop (synthesized soft noise + slow LFO drone) ───────
+
+const AMBIENT_KEY = 'os-portfolio-ambient'
+
+let ambientNodes: {
+  noiseSrc: AudioBufferSourceNode
+  filter: BiquadFilterNode
+  gain: GainNode
+  drone1: OscillatorNode
+  drone2: OscillatorNode
+  droneGain: GainNode
+} | null = null
+
+function startAmbientNodes(): void {
+  if (ambientNodes) return
+  const ac = getCtx()
+  // Long looping pink-ish noise buffer
+  const len = ac.sampleRate * 4
+  const buf = ac.createBuffer(1, len, ac.sampleRate)
+  const data = buf.getChannelData(0)
+  let lastOut = 0
+  for (let i = 0; i < len; i++) {
+    const white = Math.random() * 2 - 1
+    lastOut = (lastOut + 0.02 * white) / 1.02
+    data[i] = lastOut * 3
+  }
+  const src = ac.createBufferSource()
+  src.buffer = buf
+  src.loop = true
+
+  const filter = ac.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = 380
+  filter.Q.value = 0.6
+
+  const gain = ac.createGain()
+  gain.gain.value = 0
+  gain.gain.linearRampToValueAtTime(0.045, ac.currentTime + 1.2)
+
+  src.connect(filter)
+  filter.connect(gain)
+  gain.connect(ac.destination)
+  src.start()
+
+  // Slow drone pad
+  const d1 = ac.createOscillator()
+  d1.type = 'sine'
+  d1.frequency.value = 110
+  const d2 = ac.createOscillator()
+  d2.type = 'sine'
+  d2.frequency.value = 165
+  const dGain = ac.createGain()
+  dGain.gain.value = 0
+  dGain.gain.linearRampToValueAtTime(0.012, ac.currentTime + 1.5)
+  d1.connect(dGain)
+  d2.connect(dGain)
+  dGain.connect(ac.destination)
+  d1.start()
+  d2.start()
+
+  ambientNodes = { noiseSrc: src, filter, gain, drone1: d1, drone2: d2, droneGain: dGain }
+}
+
+function stopAmbientNodes(): void {
+  if (!ambientNodes) return
+  const ac = getCtx()
+  const t = ac.currentTime
+  ambientNodes.gain.gain.linearRampToValueAtTime(0, t + 0.6)
+  ambientNodes.droneGain.gain.linearRampToValueAtTime(0, t + 0.6)
+  const n = ambientNodes
+  setTimeout(() => {
+    try {
+      n.noiseSrc.stop()
+      n.drone1.stop()
+      n.drone2.stop()
+    } catch {}
+  }, 700)
+  ambientNodes = null
+}
+
+export function isAmbientPlaying(): boolean {
+  if (typeof window === 'undefined') return false
+  return localStorage.getItem(AMBIENT_KEY) === 'true'
+}
+
+export function setAmbientPlaying(on: boolean): void {
+  localStorage.setItem(AMBIENT_KEY, String(on))
+  try {
+    const ac = getCtx()
+    if (on) {
+      const start = () => startAmbientNodes()
+      if (ac.state === 'suspended') ac.resume().then(start)
+      else start()
+    } else {
+      stopAmbientNodes()
+    }
+  } catch {}
+}
+
+/** Resume ambient playback on mount if it was on previously (after user gesture) */
+export function resumeAmbientIfEnabled(): void {
+  if (typeof window === 'undefined') return
+  if (isAmbientPlaying()) {
+    try {
+      const ac = getCtx()
+      if (ac.state === 'suspended') ac.resume().then(() => startAmbientNodes())
+      else startAmbientNodes()
+    } catch {}
+  }
+}
