@@ -82,7 +82,10 @@ export default function Desktop() {
   }
 
   const handleContextMenu = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('[data-window]')) return
+    // Suppress when right-clicking inside any window or popover (they live as
+    // descendants of react-rnd's wrapper, which sets a 'react-draggable' class).
+    const target = e.target as HTMLElement
+    if (target.closest('.react-draggable, [data-popover]')) return
     e.preventDefault()
     setSelected(null)
     setContextMenu({ x: e.clientX, y: e.clientY })
@@ -123,16 +126,14 @@ export default function Desktop() {
         ))}
       </div>
 
-      {/* Windows */}
+      {/* Windows — render directly so Rnd's bounds="parent" sees the desktop container */}
       {windows.map((win) => {
         const AppComponent = APP_COMPONENTS[win.appId]
         if (!AppComponent) return null
         return (
-          <div data-window key={win.id}>
-            <MacWindow window={win}>
-              <AppComponent windowId={win.id} meta={win.meta} />
-            </MacWindow>
-          </div>
+          <MacWindow key={win.id} window={win}>
+            <AppComponent windowId={win.id} meta={win.meta} />
+          </MacWindow>
         )
       })}
 
