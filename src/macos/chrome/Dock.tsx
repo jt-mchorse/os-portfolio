@@ -36,11 +36,18 @@ const ICON_STYLES: Record<AppId, { bg: string; symbol: string; symbolColor?: str
   'project-detail': { bg: 'linear-gradient(180deg, #fbcf65 0%, #e2a13a 100%)', symbol: '📁' },
 }
 
-// Tuning constants — match the buildui.com / vihanga CodePen pattern
-const BASE = 48 // base icon size
-const MAX_SCALE = 1.55 // max magnification factor at cursor center
-const DISTANCE = 140 // pixel radius of magnification influence
-const SPRING = { mass: 0.1, stiffness: 170, damping: 12 }
+// ── Tuning ─────────────────────────────────────────────────────────────────
+// BASE     : the icon's resting size (square)
+// MAX      : magnification factor at cursor center
+// DISTANCE : magnification radius in pixels
+// PAD      : equal padding on every side of the dock pill (resting state)
+// GAP      : fixed spacing between icon containers
+const BASE = 48
+const MAX = 1.85
+const DISTANCE = 150
+const PAD = 8
+const GAP = 8
+const SPRING = { mass: 0.1, stiffness: 170, damping: 14 }
 
 export default function Dock() {
   const dockRef = useRef<HTMLDivElement>(null)
@@ -48,7 +55,6 @@ export default function Dock() {
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null)
   const { openWindow, windows, restoreWindow, getWindowByApp } = useWindowStore()
 
-  // Motion value for cursor x position relative to viewport. Infinity = inactive.
   const mouseX = useMotionValue<number>(Infinity)
 
   const allItems = [...DOCK_ITEMS, ...DOCK_UTILS]
@@ -90,18 +96,26 @@ export default function Dock() {
 
   return (
     <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none z-[700]">
+      {/*
+        Dock pill — fixed total height (PAD*2 + BASE), flexible width.
+        overflow:visible lets icons grow upward past the pill on hover.
+      */}
       <motion.div
         ref={dockRef}
         onMouseMove={(e) => mouseX.set(e.clientX)}
         onMouseLeave={() => mouseX.set(Infinity)}
-        className="flex items-end gap-3 px-4 py-2 rounded-2xl pointer-events-auto"
+        className="flex items-end pointer-events-auto"
         style={{
+          height: BASE + PAD * 2,
+          padding: PAD,
+          gap: GAP,
+          borderRadius: 18,
           background: 'rgba(255,255,255,0.18)',
           backdropFilter: 'blur(28px) saturate(180%)',
           WebkitBackdropFilter: 'blur(28px) saturate(180%)',
           border: '1px solid rgba(255,255,255,0.28)',
-          boxShadow:
-            '0 12px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.4)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.4)',
+          overflow: 'visible',
         }}
       >
         {allItems.map((item, idx) => {
@@ -110,11 +124,15 @@ export default function Dock() {
           const showDividerBefore = idx === dividerIdx
 
           return (
-            <div key={item.id} className="flex items-end gap-3">
+            <div key={item.id} className="flex items-end" style={{ gap: GAP }}>
               {showDividerBefore && (
                 <div
-                  className="self-center w-px"
-                  style={{ background: 'rgba(255,255,255,0.3)', height: BASE - 8 }}
+                  className="self-center"
+                  style={{
+                    width: 1,
+                    height: BASE - 8,
+                    background: 'rgba(255,255,255,0.3)',
+                  }}
                 />
               )}
               <DockItem
@@ -124,9 +142,7 @@ export default function Dock() {
                 bouncing={isBouncing}
                 isRunning={isRunning}
                 isLabelHovered={hoveredLabel === item.id}
-                onHoverChange={(hovered) =>
-                  setHoveredLabel(hovered ? item.id : null)
-                }
+                onHoverChange={(hovered) => setHoveredLabel(hovered ? item.id : null)}
                 onClick={() => handleClick(item)}
               />
             </div>
@@ -159,7 +175,7 @@ function DockItem({
 }: DockItemProps) {
   const ref = useRef<HTMLDivElement>(null)
 
-  // Distance between cursor x and this icon's center, in viewport coords.
+  // Distance between cursor x and this icon's center.
   const distance = useTransform(mouseX, (mx) => {
     if (mx === Infinity || mx === -Infinity) return DISTANCE * 2
     const rect = ref.current?.getBoundingClientRect() ?? { left: 0, width: BASE }
@@ -167,18 +183,25 @@ function DockItem({
     return mx - center
   })
 
-  // Width / height grow from BASE → BASE * MAX_SCALE in a bell curve.
-  const sizeRaw = useTransform(distance, [-DISTANCE, 0, DISTANCE], [BASE, BASE * MAX_SCALE, BASE])
-  const size = useSpring(sizeRaw, SPRING)
+  // Bell-curve: BASE → BASE*MAX → BASE
+  const widthRaw = useTransform(distance, [-DISTANCE, 0, DISTANCE], [BASE, BASE * MAX, BASE])
+  const width = useSpring(widthRaw, SPRING)
 
-  // Bouncing on launch — overlay an extra y oscillation when active.
+  // The icon button stays square — its size matches the container width but is
+  // anchored to the bottom of the (fixed-height) container so growth happens
+  // upward, leaving the dock pill's vertical bounds unchanged.
+  const fontSize = useTransform(width, (w) => Math.round(w * 0.5))
+  const radius = useTransform(width, (w) => Math.round(w * 0.22))
+  const highlightHeight = useTransform(width, (w) => `${Math.round(w * 0.32)}px`)
+  const highlightRadius = useTransform(width, (w) => Math.round(w * 0.18))
+
+  // Bouncing oscillation
   const bounceY = useMotionValue(0)
   if (bouncing) {
     let elapsed = 0
     const id = setInterval(() => {
       elapsed += 16
       const t = elapsed / 700
-      // Two-bump curve: -32 → 0 → -16 → 0
       let y = 0
       if (t < 0.4) y = -32 * Math.sin((t / 0.4) * Math.PI)
       else if (t < 1) y = -16 * Math.sin(((t - 0.4) / 0.6) * Math.PI)
@@ -190,22 +213,29 @@ function DockItem({
     }, 16)
   }
 
-  const fontSize = useTransform(size, (s) => Math.round(s * 0.5))
-
   const style = ICON_STYLES[item.id] ?? {
     bg: 'linear-gradient(180deg, #cbd5e1 0%, #64748b 100%)',
     symbol: item.emoji || '🍎',
   }
 
+  // Tooltip floats above the maximum possible icon height.
+  const TOOLTIP_BOTTOM = BASE * MAX + 12
+
   return (
     <div
       ref={ref}
-      className="relative flex flex-col items-center"
+      className="relative flex items-end justify-center"
       onMouseEnter={() => onHoverChange(true)}
       onMouseLeave={() => onHoverChange(false)}
-      style={{ width: BASE }}
+      style={{
+        // Container WIDTH animates so neighbors push apart in flex layout.
+        height: BASE,
+      }}
     >
-      {/* Tooltip — sits above the magnified icon */}
+      {/* Width-driving spacer so flex sizes the row correctly */}
+      <motion.div style={{ width, height: BASE }} className="pointer-events-none" />
+
+      {/* Tooltip */}
       <AnimatePresence>
         {isLabelHovered && (
           <motion.div
@@ -213,9 +243,9 @@ function DockItem({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
             transition={{ duration: 0.12 }}
-            className="absolute whitespace-nowrap text-[11px] text-white px-2.5 py-1 rounded-md pointer-events-none font-medium"
+            className="absolute whitespace-nowrap text-[11px] text-white px-2.5 py-1 rounded-md pointer-events-none font-medium left-1/2 -translate-x-1/2"
             style={{
-              bottom: BASE * MAX_SCALE + 12,
+              bottom: TOOLTIP_BOTTOM,
               background: 'rgba(20,20,20,0.95)',
               backdropFilter: 'blur(8px)',
               border: '1px solid rgba(255,255,255,0.12)',
@@ -236,20 +266,25 @@ function DockItem({
         )}
       </AnimatePresence>
 
-      {/* Icon — width/height driven by motion values so the row reflows */}
+      {/* Icon button — absolutely positioned, anchored to the bottom of the
+          container, so when its size grows it extends upward without affecting
+          the dock pill's height. */}
       <motion.button
         onClick={onClick}
         style={{
-          width: size,
-          height: size,
+          position: 'absolute',
+          bottom: 0,
+          left: '50%',
+          x: '-50%',
+          width,
+          height: width, // keep icon square
           y: bounceY,
-          borderRadius: useTransform(size, (s) => Math.round(s * 0.22)),
+          borderRadius: radius,
           background: style.bg,
           boxShadow:
             '0 4px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.18)',
-          originY: 1,
         }}
-        className="relative flex items-center justify-center"
+        className="flex items-center justify-center"
       >
         <motion.span
           style={{
@@ -262,15 +297,14 @@ function DockItem({
         >
           {style.symbol}
         </motion.span>
-        {/* Glossy top highlight */}
         <motion.span
           className="absolute pointer-events-none"
           style={{
             left: 4,
             right: 4,
             top: 4,
-            height: useTransform(size, (s) => `${Math.round(s * 0.32)}px`),
-            borderRadius: useTransform(size, (s) => Math.round(s * 0.18)),
+            height: highlightHeight,
+            borderRadius: highlightRadius,
             background:
               'linear-gradient(180deg, rgba(255,255,255,0.28), transparent)',
           }}
@@ -279,7 +313,7 @@ function DockItem({
 
       {/* Running dot */}
       <div
-        className="absolute w-1 h-1 rounded-full transition-opacity"
+        className="absolute w-1 h-1 rounded-full transition-opacity left-1/2 -translate-x-1/2"
         style={{
           bottom: -7,
           background: 'rgba(255,255,255,0.85)',
