@@ -8,9 +8,56 @@ export interface Project {
   contribution: string
   outcome: string
   techStack: string[]
-  liveUrl?: string
-  screenshot: string
+  /** Public site URL — used as the source of truth for logo and live screenshot. */
+  liveUrl: string
+  /** Domain for Clearbit logo lookup. Defaults to the host of liveUrl. */
+  logoDomain?: string
+  /**
+   * Brand color used as a fallback gradient when logos aren't available.
+   * Two stops: from / to.
+   */
+  brand: { from: string; to: string }
   featured: boolean
+}
+
+/**
+ * Live screenshot via WordPress mShots — free, no API key required.
+ * The first request triggers a render, subsequent loads return the image.
+ * Use a wide preset suitable for the macOS Finder card layout.
+ */
+export function projectScreenshotUrl(p: Project, w = 1280, h = 800): string {
+  const encoded = encodeURIComponent(p.liveUrl)
+  return `https://s.wordpress.com/mshots/v1/${encoded}?w=${w}&h=${h}`
+}
+
+/**
+ * Logo via Clearbit — high-quality transparent PNG, returns 404 → fallback to favicon.
+ */
+export function projectLogoUrl(p: Project, size = 128): string {
+  const domain =
+    p.logoDomain ??
+    (() => {
+      try {
+        return new URL(p.liveUrl).hostname.replace(/^www\./, '')
+      } catch {
+        return ''
+      }
+    })()
+  return `https://logo.clearbit.com/${domain}?size=${size}`
+}
+
+/** Fallback to Google's favicon service if Clearbit fails. */
+export function projectFaviconUrl(p: Project, size = 128): string {
+  const domain =
+    p.logoDomain ??
+    (() => {
+      try {
+        return new URL(p.liveUrl).hostname.replace(/^www\./, '')
+      } catch {
+        return ''
+      }
+    })()
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=${size}`
 }
 
 export const projects: Project[] = [
@@ -28,7 +75,7 @@ export const projects: Project[] = [
       '80% reduction in provisioning time. Zero-downtime deployments. Real-time infrastructure observability in production.',
     techStack: ['React', 'TypeScript', 'Node.js', 'Django', 'PostgreSQL', 'AWS Lambda', 'S3', 'App Runner', 'SNS', 'SES', 'Stripe', 'CI/CD'],
     liveUrl: 'https://atlantamediaservices.com',
-    screenshot: '/project-screenshots/ams-platform.png',
+    brand: { from: '#1e3a8a', to: '#0f172a' },
     featured: true,
   },
   {
@@ -44,7 +91,9 @@ export const projects: Project[] = [
     outcome:
       'Institutional-grade private markets intelligence platform in production serving sovereign wealth funds, pensions, and endowments.',
     techStack: ['Python', 'Django', 'NLP', 'Vue.js', 'ML inference', 'Analytics dashboards'],
-    screenshot: '/project-screenshots/shelton-ai.png',
+    liveUrl: 'https://www.sheltonai.com',
+    logoDomain: 'sheltonai.com',
+    brand: { from: '#0891b2', to: '#0e7490' },
     featured: true,
   },
   {
@@ -59,8 +108,9 @@ export const projects: Project[] = [
       'Built and maintained enterprise-level web applications across a 6+ year tenure. Mentored junior developers, led architecture decisions, and established component systems used across the platform.',
     outcome: 'A globally recognized SaaS platform with millions of users worldwide.',
     techStack: ['JavaScript', 'React', 'Component systems', 'Architecture', 'Team mentorship'],
-    liveUrl: 'https://smartsheet.com',
-    screenshot: '/project-screenshots/smartsheet.png',
+    liveUrl: 'https://www.smartsheet.com',
+    logoDomain: 'smartsheet.com',
+    brand: { from: '#1877f2', to: '#0d4ea6' },
     featured: true,
   },
   {
@@ -75,13 +125,15 @@ export const projects: Project[] = [
       'Engineered v2 from the ground up — scalable dashboard architecture for telemetry-heavy workflows, high-density data tables with advanced sorting/filtering, and a zero-downtime migration from legacy schema to normalized data structures.',
     outcome: 'Near real-time status tracking, 0 production incidents during migration, improved operational response time.',
     techStack: ['React', 'Next.js', 'TypeScript', 'Real-time events', 'Schema migration', 'Data tables'],
-    screenshot: '/project-screenshots/wire-pulse.png',
+    liveUrl: 'https://www.wirepulse.io',
+    logoDomain: 'wirepulse.io',
+    brand: { from: '#16a34a', to: '#065f46' },
     featured: true,
   },
   {
     id: 'american-logistics',
     title: 'Healthcare Logistics Operations Suite',
-    company: 'Tryon Creek / American Logistics',
+    company: 'American Logistics',
     period: '2023 – 2024',
     tagline: 'Three logistics dashboards with a 9-step form engine for healthcare transportation',
     problem:
@@ -90,7 +142,9 @@ export const projects: Project[] = [
       'Delivered three internal dashboards plus a nine-step nested form engine with conditional branching, cross-step validation, and save/resume. Integrated external service providers into a unified ops surface with live driver tracking.',
     outcome: 'Unified operational platform supporting nationwide healthcare transportation dispatch.',
     techStack: ['React', 'TypeScript', 'Complex forms', 'API integrations', 'Real-time tracking'],
-    screenshot: '/project-screenshots/american-logistics.png',
+    liveUrl: 'https://americanlogistics.com',
+    logoDomain: 'americanlogistics.com',
+    brand: { from: '#dc2626', to: '#7f1d1d' },
     featured: false,
   },
   {
@@ -106,7 +160,8 @@ export const projects: Project[] = [
     outcome: '~40% page load time reduction. Enterprise-grade scalability and global content publishing.',
     techStack: ['React', 'Next.js', 'TypeScript', 'Tailwind CSS', 'Contentful', 'Strapi', 'SEO'],
     liveUrl: 'https://lilt.com',
-    screenshot: '/project-screenshots/lilt.png',
+    logoDomain: 'lilt.com',
+    brand: { from: '#7c3aed', to: '#5b21b6' },
     featured: false,
   },
   {
@@ -121,13 +176,15 @@ export const projects: Project[] = [
       'Led development on a 20+ member team. Built React Native apps and WebSocket-powered real-time channels. Rolled out a Material UI design system and established bidirectional event reconciliation logic.',
     outcome: 'Unified multi-platform experience with live repair updates across all connected portals.',
     techStack: ['React Native', 'React', 'TypeScript', 'Material UI', 'WebSockets', 'Real-time messaging'],
-    screenshot: '/project-screenshots/iservice.png',
+    liveUrl: 'https://dealerbuilt.com/solutions/iservice/',
+    logoDomain: 'dealerbuilt.com',
+    brand: { from: '#f59e0b', to: '#b45309' },
     featured: false,
   },
   {
     id: 'veteran-crowd',
     title: 'Veteran Rewards Platform',
-    company: 'Veteran Crowd',
+    company: 'VeteranCrowd',
     period: '2024 – 2025',
     tagline: 'MFA auth, military verification, and WCAG-compliant rewards experience',
     problem:
@@ -136,7 +193,9 @@ export const projects: Project[] = [
       'Built secure onboarding with military verification and MFA. Implemented Redux state for profile/rewards/transactions. Hardened WCAG accessibility and compliance across all registration flows.',
     outcome: 'Production-grade veteran rewards platform with compliance posture and resilient auth.',
     techStack: ['React', 'Next.js', 'TypeScript', 'Redux', 'Semantic UI', 'MFA', 'WCAG'],
-    screenshot: '/project-screenshots/veteran-crowd.png',
+    liveUrl: 'https://www.veterancrowd.com/home',
+    logoDomain: 'veterancrowd.com',
+    brand: { from: '#1e40af', to: '#1e3a8a' },
     featured: false,
   },
 ]
