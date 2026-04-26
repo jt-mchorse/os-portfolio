@@ -225,7 +225,7 @@ function cmdProjects(args: string[]): CommandResult {
         ...wrap(p.outcome, 72).map((l) => line(`║   ${l}`, c.green)),
         line('║', c.dim),
         line(`║ STACK: ${p.techStack.join(' · ')}`, c.cyan),
-        ...(p.liveUrl ? [line(`║ URL:   ${p.liveUrl}`, c.blue)] : []),
+        line(`║ URL:   ${p.liveUrl}`, c.blue),
         line('╚══', c.teal),
       ],
     }

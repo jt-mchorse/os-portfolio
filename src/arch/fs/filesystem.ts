@@ -80,7 +80,9 @@ OUTCOME
 
 STACK
   ${p.techStack.join(', ')}
-${p.liveUrl ? `\nURL\n  ${p.liveUrl}` : ''}`.trim(),
+
+URL
+  ${p.liveUrl}`.trim(),
     }
   })
   return children
